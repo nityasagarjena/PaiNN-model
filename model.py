@@ -170,12 +170,12 @@ class PainnModel(nn.Module):
         node_scalar = self.readout_mlp(node_scalar)
         node_scalar.squeeze_()
         
-        image_idx = torch.arange(input_dict['energy'].shape[0],
+        image_idx = torch.arange(input_dict['num_atoms'].shape[0],
                                  device=edge.device,
                                 )
         image_idx = torch.repeat_interleave(image_idx, num_atoms)
         
-        energy = torch.zeros_like(input_dict['energy'])
+        energy = torch.zeros_like(input_dict['num_atoms']).float()
         
         energy.index_add_(0, image_idx, node_scalar)
         result_dict = {'energy': energy}
@@ -190,8 +190,8 @@ class PainnModel(nn.Module):
             )[0]
             
             # diff = R_j - R_i, so -dE/dR_j = -dE/ddiff, -dE/R_i = dE/ddiff  
-            i_forces = torch.zeros_like(input_dict['forces']).index_add(0, edge[:, 0], dE_ddiff)
-            j_forces = torch.zeros_like(input_dict['forces']).index_add(0, edge[:, 1], -dE_ddiff)
+            i_forces = torch.zeros_like(input_dict['coord']).index_add(0, edge[:, 0], dE_ddiff)
+            j_forces = torch.zeros_like(input_dict['coord']).index_add(0, edge[:, 1], -dE_ddiff)
             forces = i_forces + j_forces
             
             result_dict['forces'] = forces

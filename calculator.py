@@ -54,9 +54,9 @@ class MLCalculator(Calculator):
 #            results["stress"] = (
 #                model_results["stress"][0].detach().cpu().numpy() * self.stress_scale
 #            )
-            atoms.info["uncertainty"] = model_results["uncertainty"].detach().cpu().numpy()
-            atoms.info["ll_out"] = {
-                k: v.detach().cpu().numpy() for k, v in model_results["ll_out"].items()
-            }
+#            atoms.info["uncertainty"] = model_results["uncertainty"].detach().cpu().numpy()
+#            atoms.info["ll_out"] = {
+#                k: v.detach().cpu().numpy() for k, v in model_results["ll_out"].items()
+#            }
         
             self.results = results
