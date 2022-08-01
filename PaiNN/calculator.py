@@ -17,6 +17,7 @@ class MLCalculator(Calculator):
         self.model = model
         self.model_device = next(model.parameters()).device
         self.cutoff = model.cutoff
+        self.ase_data_reader = AseDataReader(self.cutoff)
         self.energy_scale = energy_scale
         self.forces_scale = forces_scale
 #        self.stress_scale = stress_scale
@@ -30,33 +31,32 @@ class MLCalculator(Calculator):
         """
         # First call original calculator to set atoms attribute
         # (see https://wiki.fysik.dtu.dk/ase/_modules/ase/calculators/calculator.html#Calculator)
+        if atoms is not None:
+            self.atoms = atoms.copy()       
 
-        if self.calculation_required(atoms, properties):
-            Calculator.calculate(self, atoms)
+        model_inputs = self.ase_data_reader(self.atoms)
+        model_inputs = {
+            k: v.to(self.model_device) for (k, v) in model_inputs.items()
+        }
 
-            model_inputs = ase_data_reader(atoms, ['cell'], self.cutoff)
-            model_inputs = {
-                k: v.to(self.model_device) for (k, v) in model_inputs.items()
-            }
+        model_results = self.model(model_inputs)
 
-            model_results = self.model(model_inputs)
+        results = {}
 
-            results = {}
-
-            # Convert outputs to calculator format
-            results["forces"] = (
-                model_results["forces"].detach().cpu().numpy() * self.forces_scale
-            )
-            results["energy"] = (
-                model_results["energy"][0].detach().cpu().numpy().item()
-                * self.energy_scale
-            )
+        # Convert outputs to calculator format
+        results["forces"] = (
+            model_results["forces"].detach().cpu().numpy() * self.forces_scale
+        )
+        results["energy"] = (
+            model_results["energy"][0].detach().cpu().numpy().item()
+            * self.energy_scale
+        )
 #            results["stress"] = (
 #                model_results["stress"][0].detach().cpu().numpy() * self.stress_scale
 #            )
-#            atoms.info["uncertainty"] = model_results["uncertainty"].detach().cpu().numpy()
-#            atoms.info["ll_out"] = {
-#                k: v.detach().cpu().numpy() for k, v in model_results["ll_out"].items()
-#            }
-        
-            self.results = results
+#         atoms.info["ll_out"] = {
+#             k: v.detach().cpu().numpy() for k, v in model_results["ll_out"].items()
+#         }
+        atoms.info["fps"] = model_results["fps"].detach().cpu().numpy()
+    
+        self.results = results

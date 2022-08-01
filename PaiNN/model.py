@@ -197,3 +197,113 @@ class PainnModel(nn.Module):
             result_dict['forces'] = forces
             
         return result_dict
+
+class PainnModel_predict(nn.Module):
+    """PainnModel without edge updating"""
+    def __init__(self, num_interactions, hidden_state_size, cutoff, **kwargs):
+        super().__init__()
+        
+        num_embedding = 119   # number of all elements
+        self.atom_embedding = nn.Embedding(num_embedding, hidden_state_size)
+        self.cutoff = cutoff
+        self.num_interactions = num_interactions
+        self.hidden_state_size = hidden_state_size
+        self.edge_embedding_size = 20
+        
+        self.message_layers = nn.ModuleList(
+            [
+                PainnMessage(self.hidden_state_size, self.edge_embedding_size, self.cutoff)
+                for _ in range(self.num_interactions)
+            ]
+        )
+        
+        self.update_layers = nn.ModuleList(
+            [
+                PainnUpdate(self.hidden_state_size)
+                for _ in range(self.num_interactions)
+            ]            
+        )
+        
+        self.linear_1 = nn.Linear(self.hidden_state_size, self.hidden_state_size)
+        self.silu = nn.SiLU()
+        self.linear_2 = nn.Linear(self.hidden_state_size, 1)
+        U_in_0 = torch.randn(self.hidden_state_size, 500) / 500 ** 0.5
+        U_out_1 = torch.randn(self.hidden_state_size, 500) / 500 ** 0.5
+        U_in_1 = torch.randn(self.hidden_state_size, 500) / 500 ** 0.5
+        self.register_buffer('U_in_0', U_in_0)
+        self.register_buffer('U_out_1', U_out_1)
+        self.register_buffer('U_in_1', U_in_1)
+        
+    def forward(self, input_dict, compute_forces=True):
+        # edge offset
+        num_atoms = input_dict['num_atoms']
+        num_pairs = input_dict['num_pairs']
+
+        edge = input_dict['pairs']
+        edge_offset = torch.cumsum(
+            torch.cat((torch.tensor([0], 
+                                    device=num_atoms.device,
+                                    dtype=num_atoms.dtype,                                    
+                                   ), num_atoms[:-1])),
+            dim=0
+        )
+        edge_offset = torch.repeat_interleave(edge_offset, num_pairs)
+        edge = edge + edge_offset.unsqueeze(-1)        
+        edge_diff = input_dict['n_diff']
+        if compute_forces:
+            edge_diff.requires_grad_()
+        edge_dist = torch.linalg.norm(edge_diff, dim=1)
+        
+        node_scalar = self.atom_embedding(input_dict['elems'])
+        node_vector = torch.zeros((input_dict['coord'].shape[0], 3, self.hidden_state_size),
+                                  device=edge_diff.device,
+                                  dtype=edge_diff.dtype,
+                                 )
+        
+        for message_layer, update_layer in zip(self.message_layers, self.update_layers):
+            node_scalar, node_vector = message_layer(node_scalar, node_vector, edge, edge_diff, edge_dist)
+            node_scalar, node_vector = update_layer(node_scalar, node_vector)
+            
+        x0 = node_scalar
+        z1 = self.linear_1(x0)
+        z1.retain_grad()
+        x1 = self.silu(z1)
+        node_scalar = self.linear_2(x1)
+        
+        node_scalar.squeeze_()
+        
+        image_idx = torch.arange(input_dict['num_atoms'].shape[0],
+                                 device=edge.device,
+                                )
+        image_idx = torch.repeat_interleave(image_idx, num_atoms)
+        
+        energy = torch.zeros_like(input_dict['num_atoms']).float()
+        
+        energy.index_add_(0, image_idx, node_scalar)
+        result_dict = {'energy': energy}
+        
+        if compute_forces:
+            dE_ddiff = torch.autograd.grad(
+                energy,
+                edge_diff,
+                grad_outputs=torch.ones_like(energy),
+                retain_graph=True,
+                create_graph=True,
+            )[0]
+            
+            # diff = R_j - R_i, so -dE/dR_j = -dE/ddiff, -dE/R_i = dE/ddiff  
+            i_forces = torch.zeros_like(input_dict['coord']).index_add(0, edge[:, 0], dE_ddiff)
+            j_forces = torch.zeros_like(input_dict['coord']).index_add(0, edge[:, 1], -dE_ddiff)
+            forces = i_forces + j_forces
+            
+            result_dict['forces'] = forces
+        
+        fps = torch.sum((x0.detach() @ self.U_in_0) * (z1.grad.detach() @ self.U_out_1) * 500 ** 0.5 + x1.detach() @ self.U_in_1, dim=0)
+#         result_dict['ll_out'] = {
+#             'll_out_x0': x0.detach(),
+#             'll_out_z1': z1.grad.detach(),
+#             'll_out_x1': x1.detach(),
+#         }
+        result_dict['fps'] = fps
+        del z1.grad
+        return result_dict

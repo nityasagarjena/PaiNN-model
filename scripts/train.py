@@ -6,8 +6,8 @@ import logging
 import itertools
 import torch
 
-from data import AseDataset, collate_atomsdata
-from model import PainnModel
+from PaiNN.data import AseDataset, collate_atomsdata
+from PaiNN.model import PainnModel
 
 def get_arguments(arg_list=None):
     parser = argparse.ArgumentParser(

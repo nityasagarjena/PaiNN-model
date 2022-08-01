@@ -2,32 +2,32 @@ from ase.io import read, write, Trajectory
 import torch
 from typing import List
 import asap3
-import numpy as np
+import numpy
 from scipy.spatial import distance_matrix
 
-def ase_properties(atoms):
-    """Guess dataset format from an ASE atoms"""
-    atoms_prop = []
-
-    if atoms.pbc.any():
-        atoms_prop.append('cell')
-
-    try:
-        atoms.get_potential_energy()
-        atoms_prop.append('energy')
-    except:
-        pass
-
-    try:
-        atoms.get_forces()
-        atoms_prop.append('forces')
-    except:
-        pass
-
-    return atoms_prop
+# def ase_properties(atoms):
+#     """Guess dataset format from an ASE atoms"""
+#     atoms_prop = []
+# 
+#     if atoms.pbc.any():
+#         atoms_prop.append('cell')
+# 
+#     try:
+#         atoms.get_potential_energy()
+#         atoms_prop.append('energy')
+#     except:
+#         pass
+# 
+#     try:
+#         atoms.get_forces()
+#         atoms_prop.append('forces')
+#     except:
+#         pass
+# 
+#     return atoms_prop
 
 class AseDataReader:
-    def __init__(self, cutoff=5.0):           
+    def __init__(self, cutoff=5.0):            
         self.cutoff = cutoff
         
     def __call__(self, atoms):
@@ -46,19 +46,18 @@ class AseDataReader:
         atoms_data['pairs'] = torch.from_numpy(pairs)
         atoms_data['n_diff'] = torch.from_numpy(n_diff).float()
         atoms_data['num_pairs'] = torch.tensor([pairs.shape[0]])
-
+        
         energy = torch.FloatTensor([0.0])
         try:
             energy = torch.tensor([atoms.get_potential_energy()], dtype=torch.float)
-        except AttributeError:
-            pass
-
-        forces = torch.zeros_like(atoms_data['coord'])
-        try:
-            forces = torch.tensor(atoms.get_forces(), dtype=torch.float)
-        except AttributeError:
+        except (AttributeError, RuntimeError):
             pass
         
+        forces = torch.zeros_like(atoms_data['coord'])
+        try: 
+            forces = torch.tensor(atoms.get_forces(), dtype=torch.float)
+        except (AttributeError, RuntimeError):
+            pass
         atoms_data['energy'] = energy
         atoms_data['forces'] = forces
         
@@ -108,7 +107,7 @@ class AseDataset(torch.utils.data.Dataset):
         return len(self.db)
     
     def __getitem__(self, idx):
-        atoms = self.db[idx]    # ase database indexing from 1 
+        atoms = self.db[idx]
         atoms_data = self.atoms_reader(atoms)
         return atoms_data
 
