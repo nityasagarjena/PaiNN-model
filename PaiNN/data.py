@@ -2,7 +2,7 @@ from ase.io import read, write, Trajectory
 import torch
 from typing import List
 import asap3
-import numpy
+import numpy as np
 from scipy.spatial import distance_matrix
 
 # def ase_properties(atoms):
@@ -47,19 +47,17 @@ class AseDataReader:
         atoms_data['n_diff'] = torch.from_numpy(n_diff).float()
         atoms_data['num_pairs'] = torch.tensor([pairs.shape[0]])
         
-        energy = torch.FloatTensor([0.0])
         try:
             energy = torch.tensor([atoms.get_potential_energy()], dtype=torch.float)
+            atoms_data['energy'] = energy
         except (AttributeError, RuntimeError):
             pass
         
-        forces = torch.zeros_like(atoms_data['coord'])
         try: 
             forces = torch.tensor(atoms.get_forces(), dtype=torch.float)
+            atoms_data['forces'] = forces
         except (AttributeError, RuntimeError):
             pass
-        atoms_data['energy'] = energy
-        atoms_data['forces'] = forces
         
         return atoms_data
             

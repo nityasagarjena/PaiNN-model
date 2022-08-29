@@ -1,0 +1,20 @@
++ '[' -z '' ']'
++ case "$-" in
++ __lmod_vx=x
++ '[' -n x ']'
++ set +x
+Shell debugging temporarily silenced: export LMOD_SH_DBG_ON=1 for this output (/usr/share/lmod/lmod/init/bash)
+Shell debugging restarted
++ unset __lmod_vx
++ export MKL_NUM_THREADS=1
++ MKL_NUM_THREADS=1
++ export NUMEXPR_NUM_THREADS=1
++ NUMEXPR_NUM_THREADS=1
++ export OMP_NUM_THREADS=1
++ OMP_NUM_THREADS=1
++ export OPENBLAS_NUM_THREADS=1
++ OPENBLAS_NUM_THREADS=1
++ nvidia-smi
++ ulimit -s unlimited
++ python3 md_run.py
+slurmstepd: error: *** JOB 5233695 ON s002 CANCELLED AT 2022-08-01T11:34:52 ***

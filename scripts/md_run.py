@@ -56,34 +56,19 @@ atoms = read('water_O2.cif')
 atoms.calc = mlcalc
 atoms.get_potential_energy()
 
-collect_traj = Trajectory('bad_struct.traj', 'a')
+#collect_traj = Trajectory('bad_struct.traj', 'a')
 steps = 0
 def printenergy(a=atoms):  # store a reference to atoms in the definition.
     """Function to print the potential, kinetic and total energy."""
     epot = a.get_potential_energy()
     ekin = a.get_kinetic_energy()
     temp = ekin / (1.5 * units.kB) / a.get_global_number_of_atoms()
-    ensemble = a.calc.results['ensemble']
-    energy_var = ensemble['energy_var']
-    forces_var = np.mean(ensemble['forces_var'])
-    forces_l2_var = np.mean(ensemble['forces_l2_var'])
     global steps
     steps += 1
+    with open('ensemble.log', 'a') as f:
+        f.write(
+        f"Steps={steps:12.3f} Epot={epot:12.3f} Ekin={ekin:12.3f} temperature={temp:8.2f}\n")
     
-    if (forces_l2_var > 0.0):
-        with open('ensemble.log', 'a') as f:
-            f.write(
-            f"Steps={steps:12.3f} Epot={epot:12.3f} Ekin={ekin:12.3f} temperature={temp:8.2f} energy_var={energy_var:10.6f} forces_var={forces_var:10.6f} forces_l2_var={forces_l2_var:10.6f}\n")
-    
-    if (forces_l2_var > 0.01):
-        collect_traj.write(a)
-        with open('bad_ensemble.log', 'a') as f:
-            f.write(
-            f"Steps={steps:12.3f} Epot={epot:12.3f} Ekin={ekin:12.3f} temperature={temp:8.2f} energy_var={energy_var:10.6f} forces_var={forces_var:10.6f} forces_l2_var={forces_l2_var:10.6f}\n")
-    
-    if len(collect_traj) > 1000:
-        sys.exit()
-
 #atoms.calc = encalc
 MaxwellBoltzmannDistribution(atoms, temperature_K=350)
 dyn = Langevin(atoms, 0.25 * units.fs, temperature_K=350, friction=0.1)
