@@ -3,8 +3,9 @@ from torch import nn
 from collections import defaultdict
 from torch_scatter import scatter_mean
 from typing import List, Dict, Tuple, Optional
-from PaiNN.kernel import KernelMatrix, FeatureKernelMatrix, FeatureCovKernelMatrix, DiagonalKernelMatrix
 from PaiNN.data import collate_atomsdata
+from PaiNN.select import *
+from PaiNN.kernel import *
 
 class FeatureExtractor(nn.Module):
     def __init__(self, model: nn.Module):
