@@ -263,7 +263,6 @@ def main():
         optimizer.load_state_dict(state_dict["optimizer"])
         scheduler.load_state_dict(state_dict["scheduler"])
     
-    mem_allo_1, mem_allo_2, mem_allo_3, mem_cache = [], [], [], []
     for epoch in itertools.count():
         for batch_host in train_loader:
             # Transfer to 'device'
@@ -271,7 +270,6 @@ def main():
                 k: v.to(device=device, non_blocking=True)
                 for (k, v) in batch_host.items()
             }
-            mem_allo_1.append(torch.cuda.memory_allocated())
             # Reset gradient
             optimizer.zero_grad()
 
@@ -288,16 +286,11 @@ def main():
                 args.forces_weight * forces_loss
                 + (1 - args.forces_weight) * energy_loss
             )
-            mem_allo_2.append(torch.cuda.memory_allocated())
             total_loss.backward()
             optimizer.step()
-            mem_allo_3.append(torch.cuda.memory_allocated())
-            mem_cache.append(torch.cuda.memory_reserved())
             running_loss += total_loss.item() * batch["energy"].shape[0]
             running_loss_count += batch["energy"].shape[0]
             
-            mem_check = np.vstack((mem_allo_1, mem_allo_2, mem_allo_3, mem_cache)).T
-            np.save('mem_stat.npy', mem_check)
             # print(step, loss_value)
             # Validate and save model
             if (step % log_interval == 0) or ((step + 1) == args.max_steps):
