@@ -85,7 +85,7 @@ class AseDataReader:
         mask = dist_mat < self.cutoff
         np.fill_diagonal(mask, False)        
         pairs = np.argwhere(mask)
-        n_diff = dist_mat[mask]
+        n_diff = pos[pairs[:, 1]] - pos[pairs[:, 0]]
         
         return pairs, n_diff
 
