@@ -1,0 +1,15 @@
+node_size = 40
+num_interactions = 5
+cutoff = 5.0
+split_file = "/home/energy/xinyang/work/active_learning_test/datasplits.json"
+output_dir = "model_output"
+dataset = "/home/energy/xinyang/work/active_learning_test/md17aspirin.traj"
+max_steps = 1000000
+device = "cuda"
+batch_size = 32
+initial_lr = 0.0001
+forces_weight = 0.99
+log_interval = 1000
+normalization = true
+atomwise_normalization = true
+stop_tolerance = 10
