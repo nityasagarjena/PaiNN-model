@@ -73,7 +73,7 @@ class PainnMessage(nn.Module):
 
 class PainnUpdate(nn.Module):
     """Update function"""
-    def __init__(self, node_size):
+    def __init__(self, node_size: int):
         super().__init__()
         
         self.update_U = nn.Linear(node_size, node_size)
@@ -107,23 +107,35 @@ class PainnUpdate(nn.Module):
 
 class PainnModel(nn.Module):
     """PainnModel without edge updating"""
-    def __init__(self, num_interactions, hidden_state_size, cutoff, **kwargs):
+    def __init__(
+        self, 
+        num_interactions, 
+        hidden_state_size, 
+        cutoff,
+        normalization=True,
+        target_mean=[0.0],
+        target_stddev=[1.0],
+        atomwise_normalization=True, 
+        **kwargs,
+    ):
         super().__init__()
         
         num_embedding = 119   # number of all elements
-        self.atom_embedding = nn.Embedding(num_embedding, hidden_state_size)
         self.cutoff = cutoff
         self.num_interactions = num_interactions
         self.hidden_state_size = hidden_state_size
         self.edge_embedding_size = 20
         
+        # Setup atom embeddings
+        self.atom_embedding = nn.Embedding(num_embedding, hidden_state_size)
+
+        # Setup message-passing layers
         self.message_layers = nn.ModuleList(
             [
                 PainnMessage(self.hidden_state_size, self.edge_embedding_size, self.cutoff)
                 for _ in range(self.num_interactions)
             ]
         )
-        
         self.update_layers = nn.ModuleList(
             [
                 PainnUpdate(self.hidden_state_size)
@@ -131,17 +143,32 @@ class PainnModel(nn.Module):
             ]            
         )
         
+        # Setup readout function
         self.readout_mlp = nn.Sequential(
             nn.Linear(self.hidden_state_size, self.hidden_state_size),
             nn.SiLU(),
             nn.Linear(self.hidden_state_size, 1),
         )
+
+        # Normalisation constants
+        self.normalization = torch.nn.Parameter(
+            torch.tensor(normalization), requires_grad=False
+        )
+        self.atomwise_normalization = torch.nn.Parameter(
+            torch.tensor(atomwise_normalization), requires_grad=False
+        )
+        self.normalize_stddev = torch.nn.Parameter(
+            torch.tensor(target_stddev[0]), requires_grad=False
+        )
+        self.normalize_mean = torch.nn.Parameter(
+            torch.tensor(target_mean[0]), requires_grad=False
+        )
         
     def forward(self, input_dict, compute_forces=True):
-        # edge offset
         num_atoms = input_dict['num_atoms']
         num_pairs = input_dict['num_pairs']
 
+        # edge offset. Add offset to edges to get indices of pairs in a batch but not a structure
         edge = input_dict['pairs']
         edge_offset = torch.cumsum(
             torch.cat((torch.tensor([0], 
@@ -169,15 +196,24 @@ class PainnModel(nn.Module):
         
         node_scalar = self.readout_mlp(node_scalar)
         node_scalar.squeeze_()
-        
+
         image_idx = torch.arange(input_dict['num_atoms'].shape[0],
                                  device=edge.device,
                                 )
         image_idx = torch.repeat_interleave(image_idx, num_atoms)
         
-        energy = torch.zeros_like(input_dict['num_atoms']).float()
-        
+        energy = torch.zeros_like(input_dict['num_atoms']).float()        
         energy.index_add_(0, image_idx, node_scalar)
+
+        # Apply (de-)normalization
+        if self.normalization:
+            normalizer = self.normalize_stddev
+            energy = normalizer * energy
+            mean_shift = self.normalize_mean
+            if self.atomwise_normalization:
+                mean_shift = input_dict["num_atoms"] * mean_shift
+            energy = energy + mean_shift
+
         result_dict = {'energy': energy}
         
         if compute_forces:

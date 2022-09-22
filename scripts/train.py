@@ -1,10 +1,12 @@
 import numpy as np
 import math
-import json, os, sys
+import json, os, sys, toml
+from pathlib import Path
 import argparse
 import logging
 import itertools
 import torch
+import time
 
 from PaiNN.data import AseDataset, collate_atomsdata
 from PaiNN.model import PainnModel
@@ -16,63 +18,79 @@ def get_arguments(arg_list=None):
     parser.add_argument(
         "--load_model",
         type=str,
-        default=None,
         help="Load model parameters from previous run",
     )
     parser.add_argument(
         "--cutoff",
         type=float,
-        default=5.0,
         help="Atomic interaction cutoff distance [�~E]",
     )
     parser.add_argument(
         "--split_file",
         type=str,
-        default=None,
         help="Train/test/validation split file json",
     )
     parser.add_argument(
         "--num_interactions",
         type=int,
-        default=3,
         help="Number of interaction layers used",
     )
     parser.add_argument(
-        "--node_size", type=int, default=64, help="Size of hidden node states"
+        "--node_size", type=int, help="Size of hidden node states"
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="runs/model_output",
         help="Path to output directory",
     )
     parser.add_argument(
-        "--dataset", type=str, default="data/qm9.db", help="Path to ASE trajectory",
+        "--dataset", type=str, help="Path to ASE trajectory",
     )
     parser.add_argument(
         "--max_steps",
         type=int,
-        default=int(1e6),
         help="Maximum number of optimisation steps",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda",
         help="Set which device to use for training e.g. 'cuda' or 'cpu'",
     )
     parser.add_argument(
-        "--batch_size", type=int, default=32, help="Number of molecules per minibatch",
+        "--batch_size", type=int, help="Number of molecules per minibatch",
     )
-
     parser.add_argument(
-        "--initial_lr", type=float, default=0.0001, help="Initial learning rate",
+        "--initial_lr", type=float, help="Initial learning rate",
     )
     parser.add_argument(
         "--forces_weight",
         type=float,
-        default=0.99,
         help="Tradeoff between training on forces (weight=1) and energy (weight=0)",
+    )
+    parser.add_argument(
+        "--log_inverval",
+        type=int,
+        help="The interval of model evaluation",
+    )
+    parser.add_argument(
+        "--normalization",
+        action="store_true",
+        help="Enable normalization of the model",
+    )
+    parser.add_argument(
+        "--atomwise_normalization",
+        action="store_true",
+        help="Enable atomwise normalization",
+    )
+    parser.add_argument(
+        "--stop_tolerance",
+        type=int,
+        help="Stop training when validation loss is larger than best loss for 'stop_tolerance' steps",
+    )   
+    parser.add_argument(
+        "--cfg",
+        type=str,
+        help="Path to config file. e.g. 'arguments.toml'"
     )
     
     return parser.parse_args(arg_list)
@@ -113,6 +131,35 @@ def forces_criterion(predicted, target, reduction="mean"):
     else:
         raise ValueError("Reduction must be 'mean' or 'sum'")
     return scalar
+
+def get_normalization(dataset, per_atom=True):
+    # Use double precision to avoid overflows
+    x_sum = torch.zeros(1, dtype=torch.double)
+    x_2 = torch.zeros(1, dtype=torch.double)
+    num_objects = 0
+    for i, sample in enumerate(dataset):
+        if i == 0:
+            # Estimate "bias" from 1 sample
+            # to avoid overflows for large valued datasets
+            if per_atom:
+                bias = sample["energy"] / sample["num_atoms"]
+            else:
+                bias = sample["energy"]
+        x = sample["energy"]
+        if per_atom:
+            x = x / sample["num_atoms"]
+        x -= bias
+        x_sum += x
+        x_2 += x ** 2.0
+        num_objects += 1
+    # Var(X) = E[X^2] - E[X]^2
+    x_mean = x_sum / num_objects
+    x_var = x_2 / num_objects - x_mean ** 2.0
+    x_mean = x_mean + bias
+
+    default_type = torch.get_default_dtype()
+
+    return x_mean.type(default_type), torch.sqrt(x_var).type(default_type)
 
 def eval_model(model, dataloader, device, forces_weight):
     energy_running_ae = 0
@@ -187,8 +234,33 @@ def eval_model(model, dataloader, device, forces_weight):
 
     return evaluation
 
+def update_namespace(ns, d):
+    for k, v in d.items():
+        if not ns.__dict__.get(k):
+            ns.__dict__[k] = v
+
+class EarlyStopping():
+    def __init__(self, tolerance=5, min_delta=0):
+
+        self.tolerance = tolerance
+        self.min_delta = min_delta
+        self.counter = 0
+        self.early_stop = False
+
+    def __call__(self, val_loss, best_loss):
+        if best_loss < 1.0 and (val_loss - best_loss) > self.min_delta:
+            self.counter +=1
+            if self.counter >= self.tolerance:  
+                self.early_stop = True
+                
+        return self.early_stop
+
 def main():
     args = get_arguments()
+    if args.cfg:
+        with open(args.cfg, 'r') as f:
+            params = toml.load(f)
+        update_namespace(args, params)
 
     # Setup logging
     os.makedirs(args.output_dir, exist_ok=True)
@@ -223,7 +295,13 @@ def main():
         cutoff = args.cutoff,
     )
     
-    datasplits = split_data(dataset, args)
+    with open(args.split_file, 'r') as f:
+        splits = json.load(f)
+
+    datasplits = {
+        'train': torch.utils.data.Subset(dataset, splits['train']),
+        'validation': torch.utils.data.Subset(dataset, splits['validation']),
+    }
 
     train_loader = torch.utils.data.DataLoader(
         datasplits["train"],
@@ -237,10 +315,21 @@ def main():
         collate_fn=collate_atomsdata,
     )
     
+    logging.info("Computing mean and variance")
+    target_mean, target_stddev = get_normalization(
+        datasplits["train"], 
+        per_atom=args.atomwise_normalization,
+    )
+    logging.debug("target_mean=%f, target_stddev=%f" % (target_mean, target_stddev))
+
     net = PainnModel(
         num_interactions=args.num_interactions, 
         hidden_state_size=args.node_size, 
         cutoff=args.cutoff,
+        normalization=args.normalization,
+        target_mean=target_mean.tolist(),
+        target_stddev=target_stddev.tolist(),
+        atomwise_normalization=args.atomwise_normalization,
     )
     net.to(device)
 
@@ -248,23 +337,25 @@ def main():
     criterion = torch.nn.MSELoss()
     scheduler_fn = lambda step: 0.96 ** (step / 100000)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_fn)
+    early_stop = EarlyStopping(tolerance=args.stop_tolerance)    
 
-    log_interval = 10000
     running_loss = 0
     running_loss_count = 0
     best_val_loss = np.inf
-    step = 0    
+    step = 0
+    training_time = 0    
 
     if args.load_model:
         state_dict = torch.load(args.load_model)
         net.load_state_dict(state_dict["model"])
-        step = state_dict["step"]
+#        step = state_dict["step"]
         best_val_loss = state_dict["best_val_loss"]
-        optimizer.load_state_dict(state_dict["optimizer"])
-        scheduler.load_state_dict(state_dict["scheduler"])
+#        optimizer.load_state_dict(state_dict["optimizer"])
+#        scheduler.load_state_dict(state_dict["scheduler"])
     
     for epoch in itertools.count():
         for batch_host in train_loader:
+            start = time.time()
             # Transfer to 'device'
             batch = {
                 k: v.to(device=device, non_blocking=True)
@@ -290,10 +381,12 @@ def main():
             optimizer.step()
             running_loss += total_loss.item() * batch["energy"].shape[0]
             running_loss_count += batch["energy"].shape[0]
-            
+            training_time += time.time() -  start
+
             # print(step, loss_value)
             # Validate and save model
-            if (step % log_interval == 0) or ((step + 1) == args.max_steps):
+            if (step % args.log_interval == 0) or ((step + 1) == args.max_steps):
+                eval_start = time.time()
                 train_loss = running_loss / running_loss_count
                 running_loss = running_loss_count = 0
 
@@ -303,15 +396,17 @@ def main():
                 )
 
                 logging.info(
-                    "step=%d, %s, sqrt(train_loss)=%g, max memory used=%g",
+                    "step=%d, %s, sqrt(train_loss)=%g, max memory used=%g, training time=%g min, eval time=%g min",
                     step,
                     eval_formatted,
                     math.sqrt(train_loss),
                     torch.cuda.max_memory_allocated() / 2**20,
+                    training_time / 60,
+                    (time.time() - eval_start) / 60
                 )
-               
+                training_time = 0
                 # Save checkpoint
-                if eval_dict["sqrt(total_loss)"] < best_val_loss:
+                if not early_stop(eval_dict["sqrt(total_loss)"], best_val_loss):
                     best_val_loss = eval_dict["sqrt(total_loss)"]
                     torch.save(
                         {
@@ -320,9 +415,15 @@ def main():
                             "scheduler": scheduler.state_dict(),
                             "step": step,
                             "best_val_loss": best_val_loss,
+                            "node_size": args.node_size,
+                            "num_layer": args.num_interactions,
+                            "cutoff": args.cutoff,
                         },
                         os.path.join(args.output_dir, "best_model.pth"),
                     )
+                else:
+                    sys.exit(0)
+
             step += 1
 
             scheduler.step()
@@ -336,6 +437,9 @@ def main():
                         "scheduler": scheduler.state_dict(),
                         "step": step,
                         "best_val_loss": best_val_loss,
+                        "node_size": args.node_size,
+                        "num_layer": args.num_interactions,
+                        "cutoff": args.cutoff,
                     },
                     os.path.join(args.output_dir, "exit_model.pth"),
                 )

@@ -265,7 +265,7 @@ class GeneralActiveLearning:
     :param kernel: Name of the kernel, e.g. "full-g", "ll-g", "full-F_inv", "ll-F_inv", "qbc-energy", "qbc-force".
                    "random" produces random selection and "ae-energy" and "ae-force" select by absolute errors
                    on the pool data, which is only possible if the pool data is already labeled.
-    :param selection: Selection method, one of "max_dist_greedy", "CUR", "lcmd_greedy", "max_det_greedy" or "max_diag".
+    :param selection: Selection method, one of "max_dist_greedy", "deterministic_CUR", "lcmd_greedy", "max_det_greedy" or "max_diag".
     :param n_random_features: If "n_random_features = 0", do not use random projections.
                               Otherwise, use random projections of all linear-layer gradients.
     """
