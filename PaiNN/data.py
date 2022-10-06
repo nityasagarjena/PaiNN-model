@@ -54,7 +54,7 @@ class AseDataReader:
             pass
         
         try: 
-            forces = torch.tensor(atoms.get_forces(), dtype=torch.float)
+            forces = torch.tensor(atoms.get_forces(apply_constraint=False), dtype=torch.float)
             atoms_data['forces'] = forces
         except (AttributeError, RuntimeError):
             pass

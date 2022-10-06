@@ -29,6 +29,36 @@ def max_det_greedy(matrix: KernelMatrix, batch_size: int) -> torch.Tensor:
     batch_idxs = torch.hstack(batch_idxs)    
     return batch_idxs
 
+def max_det_greedy_local(matrix: KernelMatrix, batch_size: int, num_atoms: torch.Tensor) -> torch.Tensor:
+    vec_c = matrix.get_diag()
+    batch_idxs = [torch.argmax(vec_c)]
+
+    l_n = None
+    image_idx = torch.arange(
+        num_atoms.shape[0],
+        device=num_atoms.device,                                   
+    )
+    image_idx = torch.repeat_interleave(image_idx, num_atoms)
+    
+    selected_idx = []
+    n = 0
+    while len(selected_idx) < batch_size:
+        opt_idx = batch_idxs[-1]
+        l_n_T_l_n = 0.0 if l_n is None else torch.einsum('w,wc->c', l_n[:, opt_idx], l_n)
+        mat_col = matrix.get_column(opt_idx)
+        update = (1 / torch.sqrt(vec_c[opt_idx])) * (mat_col - l_n_T_l_n)
+        vec_c = vec_c - update ** 2
+        l_n = update.unsqueeze(0) if l_n is None else torch.concat((l_n, update.unsqueeze(0)))
+        new_idx = torch.argmax(vec_c)
+        if vec_c[new_idx] <= 1e-12 or new_idx in batch_idxs:
+            break
+        else:
+            batch_idxs.append(new_idx)
+        if image_idx[new_idx] not in selected_idx:
+            selected_idx.append(image_idx[new_idx])
+ 
+    return torch.stack(selected_idx)
+
 def lcmd_greedy(matrix: KernelMatrix, batch_size: int, n_train: int) -> torch.Tensor:
     """
     Only accept matrix with double dtype!!!

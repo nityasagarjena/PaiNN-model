@@ -143,6 +143,18 @@ class FeatureStatistics:
                 dtype = atomic_g.dtype,
                 device = atomic_g.device,
             ).index_add(0, image_idx, atomic_g)
+        elif kernel == 'local_full-g':
+            assert random_projection.num_features != 0, "Error! Random projections must be provided!"
+            feats, grads = feature_extractor(model_inputs)
+            atomic_g = torch.zeros((image_idx.shape[0], random_projection.num_features))
+            for feat, grad, in_proj, out_proj in zip(
+                feats, 
+                grads, 
+                random_projection.in_feat_proj,
+                random_projection.out_grad_proj,
+            ):
+                atomic_g = (feat @ in_proj) * (grad @ out_proj)
+            g = atomic_g
         
         elif kernel == 'll-gradient':
             feats, grads = feature_extractor(model_inputs)
@@ -150,13 +162,22 @@ class FeatureStatistics:
                 atomic_g = (feats[-1] @ random_projection.in_feat_proj[-1]) *\
                            (grads[-1] @ random_projection.out_grad_proj[-1])
             else:
-                atomic_g = feats[-1]
+                atomic_g = feats[-1][:, :-1]
 
             g = torch.zeros(
                 (model_inputs['num_atoms'].shape[0], atomic_g.shape[1]),
                 dtype = atomic_g.dtype,
                 device = atomic_g.device,
             ).index_add(0, image_idx, atomic_g)
+
+        elif kernel == 'local_ll-g':
+            feats, grads = feature_extractor(model_inputs)
+            if random_projection.num_features != 0:
+                atomic_g = (feats[-1] @ random_projection.in_feat_proj[-1]) *\
+                           (grads[-1] @ random_projection.out_grad_proj[-1])
+            else:
+                atomic_g = feats[-1][:, :-1]
+            g = atomic_g
         
         elif kernel == 'gnn':
             feats, grads = feature_extractor(model_inputs)
@@ -164,13 +185,22 @@ class FeatureStatistics:
                 atomic_g = (feats[0] @ random_projection.in_feat_proj[0]) *\
                            (grads[0] @ random_projection.out_grad_proj[0])
             else:
-                atomic_g = feats[0]
+                atomic_g = feats[0][:, :-1]
                 
             g = torch.zeros(
                 (model_inputs['num_atoms'].shape[0], atomic_g.shape[1]),
                 dtype = atomic_g.dtype,
                 device = atomic_g.device,
             ).index_add(0, image_idx, atomic_g)
+
+        elif kernel == 'local_gnn':
+            feats, grads = feature_extractor(model_inputs)
+            if random_projection.num_features != 0:
+                atomic_g = (feats[0] @ random_projection.in_feat_proj[0]) *\
+                           (grads[0] @ random_projection.out_grad_proj[0])
+            else:
+                atomic_g = feats[0][:, :-1]
+            g = atomic_g
         
         return g
     
@@ -210,11 +240,35 @@ class FeatureStatistics:
                         random_projection=self.random_projections[i],
                     ))
                 feat_extract.unhook()
-                global_g.append(torch.cat(model_g))
+                model_g = torch.cat(model_g)
+                # Normalization
+                model_g = (model_g - torch.mean(model_g, dim=0)) / torch.var(model_g, dim=0)
+                global_g.append(model_g)
+#                global_g.append(torch.cat(model_g))
                 
             self.g = torch.stack(global_g)
                 
         return self.g
+
+    def get_num_atoms(
+        self,
+        dataset: Optional[torch.utils.data.Dataset]=None,
+    ):
+        if dataset == None:
+            dataset = self.dataset
+        else:
+            self.dataset = dataset
+        num_atoms = []
+        dataloader = torch.utils.data.DataLoader(
+            dataset=dataset,
+            batch_size=self.batch_size,
+            collate_fn=collate_atomsdata,
+        )
+        for batch in dataloader:
+            batch = {k: v.to(self.device) for k, v in batch.items()}
+            num_atoms.append(batch['num_atoms'])
+        
+        return torch.cat(num_atoms)
             
     def get_ens_stats(self, dataset: Optional[torch.utils.data.Dataset]=None) -> Dict[str, torch.Tensor]:
         """
@@ -315,6 +369,9 @@ class GeneralActiveLearning:
         elif self.selection == 'lcmd_greedy':
             matrix = self._get_kernel_matrix(stats['pool'], stats['train'])
             idxs = lcmd_greedy(matrix=matrix, batch_size=al_batch_size, n_train=len(datasets['train']))
+        elif self.selection == 'max_det_greedy_local':
+            matrix, num_atoms = self._get_kernel_matrix(stats['pool'])
+            idxs = max_det_greedy_local(matrix=matrix, batch_size=al_batch_size, num_atoms=num_atoms)
         else:
             raise NotImplementedError(f"Unknown selection method '{self.selection}' for active learning!")
             
@@ -328,6 +385,20 @@ class GeneralActiveLearning:
             return FeatureKernelMatrix(torch.cat([s.get_features(kernel='full-gradient') for s in stats_list], dim=1))
         elif self.kernel == 'll-g':
             return FeatureKernelMatrix(torch.cat([s.get_features(kernel='ll-gradient') for s in stats_list], dim=1))
+        elif self.kernel == 'gnn':
+            return FeatureKernelMatrix(torch.cat([s.get_features(kernel='gnn') for s in stats_list], dim=1))
+        elif self.kernel == 'local_full-g':
+            matrix = FeatureKernelMatrix(torch.cat([s.get_features(kernel='local_full-g') for s in stats_list], dim=1))
+            num_atoms = torch.cat([s.get_num_atoms() for s in stats_list])
+            return matrix, num_atoms
+        elif self.kernel == 'local_ll-g':
+            matrix = FeatureKernelMatrix(torch.cat([s.get_features(kernel='local_ll-g') for s in stats_list], dim=1))
+            num_atoms = torch.cat([s.get_num_atoms() for s in stats_list])
+            return matrix, num_atoms 
+        elif self.kernel == 'local_gnn':
+            matrix = FeatureKernelMatrix(torch.cat([s.get_features(kernel='local_gnn') for s in stats_list], dim=1))
+            num_atoms = torch.cat([s.get_num_atoms() for s in stats_list])
+            return matrix, num_atoms 
         elif self.kernel == 'full-F_inv':
             return FeatureCovKernelMatrix(torch.cat([s.get_features(kernel='full-gradient') for s in stats_list], dim=1),
                                           train_stats.get_F_reg_inv())
