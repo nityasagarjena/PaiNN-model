@@ -1,4 +1,3 @@
-<div align="center">
 # <div align="center">PaiNN-model</div>
 ## <div align="center">Documentation</div>
 No documentation yet.
@@ -15,6 +14,7 @@ $ git clone https://github.com/Yangxinsix/PaiNN-model.git
 $ cd PaiNN-model
 $ python -m pip install -U .
 ```
+
 </details>
 
 <details open>
@@ -22,5 +22,5 @@ $ python -m pip install -U .
 * See `train.py` in `scripts` for training, and `md_run.py` for running MD simulations by using ASE.
 * See `al_select.py` for active learning.
 * See `flow.py` for distributing and submitting active learning jobs.
+
 </details>
-</div>
