@@ -227,7 +227,7 @@ def run_dft(folder, deps={}, extra_args: List[str] = [], iteration: int=0):
 
             arguments = ['--cfg', 'arguments.toml']
             
-            if params.get('num_jobs') and iteration > 1:
+            if params.get('num_jobs'):
                 for i in range(params['num_jobs']):
                     dft_arguments = ['--cfg', '../arguments.toml', '--job_order', f'{i}']
                     dft_path = path / f'{i}'
