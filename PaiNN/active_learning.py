@@ -412,8 +412,8 @@ class GeneralActiveLearning:
         elif self.kernel == 'ae-energy':
             return DiagonalKernelMatrix(pool_stats.get_ens_stats()['Energy-AE'])
         elif self.kernel == 'ae-force':
-            return DiagonalKernelMatrix(pool_stats.get_ens_stats()['Forces-Var'])
+            return DiagonalKernelMatrix(pool_stats.get_ens_stats()['Forces-AE'])
         elif self.kernel == 'random':
-            return DiagonalKernelMatrix(torch.rand([sum([len(s) for s in stats_list])]))
+            return DiagonalKernelMatrix(torch.rand([sum([len(s.dataset) for s in stats_list])]))
         else:
             raise RuntimeError(f"Unknown active learning kernel {self.kernel}!")

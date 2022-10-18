@@ -1,0 +1,214 @@
+# An example configuration file for active learning workflow
+
+[global]
+root = '.'
+random_seed = 3407
+
+[train]
+# Hyperparameters for PaiNN
+# load_model = '.'
+cutoff = 5.0
+# split_file = 'datasplits.json'
+val_ratio = 0.1
+num_interactions = 3
+node_size = 64
+output_dir = 'model_output'
+dataset = '/home/scratch3/xinyang/Au-facets/111_110.traj'
+max_steps = 1000000
+device = 'cuda'
+batch_size = 12
+initial_lr = 0.0001
+forces_weight = 0.98
+log_interval = 2000
+normalization = false
+atomwise_normalization = false
+stop_patience = 20
+plateau_scheduler = true                 # use ReduceLROnPlateatu scheduler to decrease lr when learning plateaus
+random_seed = 3407
+
+[train.ensemble]
+# For training multiple models in parallel, the hyperparameters will be set as default (in above) if not assigned
+#80_node_4_layer = {node_size = 80, num_interactions = 4, load_model = '/home/scratch3/xinyang/Au-facets/old_training/80_node_4_layer/model_output/best_model.pth'}
+#96_node_4_layer = {node_size = 96, num_interactions = 4, load_model = '/home/scratch3/xinyang/Au-facets/old_training/96_node_4_layer/model_output/best_model.pth'}
+112_node_3_layer = {node_size = 112, num_interactions = 3, load_model = '/home/scratch3/xinyang/Au-facets/old_training/112_node_3_layer/model_output/best_model.pth'}
+120_node_3_layer = {node_size = 120, num_interactions = 3, start_iteration = 7, stop_patience = 200}
+128_node_3_layer = {node_size = 128, num_interactions = 3, load_model = '/home/scratch3/xinyang/Au-facets/old_training/128_node_3_layer/model_output/best_model.pth'}
+136_node_3_layer = {node_size = 136, num_interactions = 3, start_iteration = 7, stop_patience = 200}
+144_node_3_layer = {node_size = 144, num_interactions = 3, load_model = '/home/scratch3/xinyang/Au-facets/old_training/144_node_3_layer/model_output/best_model.pth'}
+160_node_3_layer = {node_size = 160, num_interactions = 3, load_model = '/home/scratch3/xinyang/Au-facets/old_training/160_node_3_layer/model_output/best_model.pth'}
+
+[train.resource]
+nodename = 'sm3090'
+tmax = '7d'                               # Time limit for each job. For example: 1d (1 day), 2m (2 min), 5h (5 hours)
+cores = 8
+
+[MD]
+# Parameters for MD. It is better to customize your parameters in MD script.
+init_traj = '/home/scratch3/xinyang/md_mlp/Au_111_110/110_water/MD.traj'
+start_indice = -5
+# load_model = '/home/scratch3/xinyang/Au-facets/old_training/train'          # will be assigned in the workflow
+time_step = 0.5
+temperature = 350
+max_steps = 2000000
+min_steps = 100000
+device = 'cuda'
+fix_under = 7.0
+dump_step = 100
+print_step = 1
+num_uncertain = 1000
+random_seed = 3407
+
+[MD.runs]
+# run multiple MD jobs in parallel
+[MD.runs.Au_111_water]
+init_traj = '/home/scratch3/xinyang/md_mlp/Au_111_110/111_water/MD.traj'
+fix_under = 7.0
+start_indice = -5
+min_steps = 50000
+dump_step = 50
+
+[MD.runs.Au_110_water]
+init_traj = '/home/scratch3/xinyang/md_mlp/Au_111_110/110_water/MD.traj'
+max_steps = 2000000                  # this one is already good enough
+fix_under = 7.0
+start_indice = -5
+min_steps = 50000
+dump_step = 100
+
+[MD.runs.Au_111_1OH]
+init_traj = '/home/scratch3/xinyang/Au-facets/1OH/md/iter_0/111_1OH/MD.traj'
+fix_under = 7.0
+start_indice = -5
+min_steps = 50000
+dump_step = 30
+start_iteration = 3
+
+[MD.runs.Au_110_1OH]
+init_traj = '/home/scratch3/xinyang/Au-facets/1OH/md/iter_0/110_1OH/MD.traj'
+fix_under = 7.0
+start_indice = -5
+min_steps = 20000
+dump_step = 30
+start_iteration = 3
+
+[MD.runs.Au_111_1O2]
+init_traj = '/home/energy/xinyang/work/Au_MD/DFT_MD/111_MD/O2/111_O2_incomplete.traj'
+fix_under = 7.0
+start_indice = -5
+min_steps = 30000
+dump_step = 50
+start_iteration = 3
+
+[MD.runs.Au_110_1O2]
+init_traj = '/home/energy/xinyang/work/Au_MD/DFT_MD/110_MD/O2/110_O2_incomplete.traj'
+fix_under = 7.0
+start_indice = -5
+min_steps = 50000
+dump_step = 50
+start_iteration = 3
+
+[MD.resource]
+nodename = 'sm3090'
+tmax = '7d'
+cores = 8
+
+[select]
+kernel = "full-g"                         # Name of the kernel, e.g. "full-g", "ll-g", "full-F_inv", "ll-F_inv", "qbc-energy", "qbc-force", "ae-energy", "ae-force", "random"
+selection = "lcmd_greedy"              # Selection method, one of "max_dist_greedy", "deterministic_CUR", "lcmd_greedy", "max_det_greedy" or "max_diag".
+n_random_features = 500                   # If "n_random_features = 0", do not use random projections.
+batch_size = 100
+# load_model = '/home/scratch3/xinyang/Au-facets/old_training/train'  # will be assigned in the workflow
+# dataset = 'md17aspirin.traj'            # should not be assigned if using pool data set from MD
+# split_file = 'datasplits.json'
+# pool_set =                              # Useful when dataset and split_file are not assigned, can be a list or str
+train_set = '/home/scratch3/xinyang/Au-facets/111_110.traj'
+device = 'cuda'
+random_seed = 3407
+
+[select.runs]
+Au_110_water = {batch_size = 100}         # this one is much faster so use larger batch size can save some time
+Au_111_water = {batch_size = 200}
+Au_110_1OH = {batch_size = 200, start_iteration = 3}
+Au_111_1OH = {batch_size = 200, start_iteration = 3}
+Au_110_1O2 = {batch_size = 200, start_iteration = 3}
+Au_111_1O2 = {batch_size = 200, start_iteration = 3}
+
+
+[select.resource]
+nodename = 'sm3090'
+tmax = '2d'
+cores = 8
+
+[labeling]
+# label_set = 'xxx.traj'
+train_set = '/home/scratch3/xinyang/Au-facets/111_110.traj'
+# pool_set                                # will be assigned in the workflow, can be a list
+# al_info                                 # will be assigned in the workflow
+num_jobs = 2
+
+[labeling.VASP]
+# VASP parameters
+xc = 'PBE'
+gga = 'pe'
+system = 'ni'
+prec = 'normal'
+istart = 1
+icharg = 2
+npar = 4
+encut = 350
+algo = 'Fast'
+lreal = 'Auto'
+nelm = 1000
+nelmin = 5
+nelmdl = -5
+ediff = 1e-4
+ediffg = -0.01
+nsw = 0
+ibrion = 0
+potim = 1
+isif = 2
+ispin = 2
+ismear = 0
+sigma = 0.1
+lwave = true
+lcharg = false
+ivdw = 11
+lasph = true
+kpts = [2, 2, 1]
+gamma = false
+# kspacing = 0.5
+
+[labeling.runs]
+
+[labeling.runs.Au_111_water]               # The key name should be the same to MD
+gamma = true                          
+num_jobs = 6                               # accelerate DFT labeling by spliting the job to several different parts
+
+[labeling.runs.Au_110_water]
+gamma = false
+num_jobs = 2
+
+[labeling.runs.Au_111_1OH]
+gamma = true
+num_jobs = 6
+start_iteration = 3
+
+[labeling.runs.Au_110_1OH]
+gamma = false
+num_jobs = 2
+start_iteration = 3
+
+[labeling.runs.Au_111_1O2]
+gamma = true
+num_jobs = 6
+start_iteration = 3
+
+[labeling.runs.Au_110_1O2]
+gamma = false
+num_jobs = 2
+start_iteration = 3
+
+[labeling.resource]
+cores = 40
+nodename = 'xeon40'
+tmax = '2d'
