@@ -1,3 +1,4 @@
+<div align="center">
 # <div align="center">PaiNN-model</div>
 ## <div align="center">Documentation</div>
 No documentation yet.
@@ -22,3 +23,4 @@ $ python -m pip install -U .
 * See `al_select.py` for active learning.
 * See `flow.py` for distributing and submitting active learning jobs.
 </details>
+</div>
