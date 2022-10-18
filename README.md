@@ -6,7 +6,8 @@ No documentation yet.
 <details open>
 <summary>How to install</summary>
 
-This code is only tested on [**Python>=3.8.0**](https://www.python.org/) and [**PyTorch>=1.10**](https://pytorch.org/get-started/locally/). //
+This code is only tested on [**Python>=3.8.0**](https://www.python.org/) and [**PyTorch>=1.10**](https://pytorch.org/get-started/locally/).
+
 Requirements: [PyTorch Scatter](https://github.com/rusty1s/pytorch_scatter)(if you want to use active learning),
 [toml](https://toml.io/en/), [myqueue](https://myqueue.readthedocs.io/en/latest/installation.html)(if you want to submit jobs automatically).
 
