@@ -1,4 +1,7 @@
-# <div align="center">PaiNN-model</div>
+# <div align="center">PaiNN-model introduction</div>
+This is a simple implementation of [PaiNN](https://arxiv.org/abs/2102.03150) model and active learning workflow for fitting interatomic potentials.  
+The learned features or gradients in the model are used for active learning. Several selection methods are implemented.  
+All the active learning codes are to be tested.
 ## <div align="center">Documentation</div>
 No documentation yet.
 
