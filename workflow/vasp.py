@@ -33,6 +33,11 @@ def get_arguments(arg_list=None):
         help="Path to json file that stores indices selected in pool set",
     )
     parser.add_argument(
+        "--num_jobs",
+        type=int,
+        help="Number of DFT jobs",
+    )
+    parser.add_argument(
         "--job_order",
         type=int,
         help="Split DFT jobs to several different parts",
