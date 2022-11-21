@@ -14,6 +14,10 @@ Requirements: [PyTorch Scatter](https://github.com/rusty1s/pytorch_scatter)(if y
 [toml](https://toml.io/en/), [myqueue](https://myqueue.readthedocs.io/en/latest/installation.html)(if you want to submit jobs automatically).
 
 ```bash
+$ conda install pytorch-scatter -c pyg
+$ conda install -c conda-forge toml
+$ python3 -m pip install myqueue
+$ conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
 $ git clone https://github.com/Yangxinsix/PaiNN-model.git
 $ cd PaiNN-model
 $ python -m pip install -U .
